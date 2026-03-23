@@ -93,6 +93,10 @@ void *memset(void *buf, char c, size_t n)
 	return buf;
 }
 
+/* For simplicity, we'll use strcpy here, but try implementing and using an
+ * alternative function (strcpy_s)
+ * instead.*/
+
 char *strcpy(char *dst, const char *src)
 {
 	char *d = dst;

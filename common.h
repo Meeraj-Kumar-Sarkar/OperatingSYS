@@ -1,4 +1,4 @@
-// typedef int bool;
+typedef int bool;
 typedef unsigned char uint8_t;
 typedef unsigned short uint16_t;
 typedef unsigned int uint32_t;
@@ -9,6 +9,7 @@ typedef uint32_t vaddr_t;
 
 #define true 1
 #define false 0
+#define PAGE_SIZE 4096
 #define NULL ((void *)0)
 #define align_up(value, align) __builtin_align_up(value, align)
 #define is_aligned(value, align) __builtin_is_aligned(value, align)
