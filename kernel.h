@@ -1,6 +1,49 @@
 #pragma once
 #include "common.h"
 
+#define PROCS_MAX 8
+
+#define PROC_UNUSED 0
+#define PROC_RUNNABLE 1
+
+#define READ_CSR(reg)                                         \
+	({                                                        \
+		unsigned long __tmp;                                  \
+		__asm__ __volatile__("csrr %0, " #reg : "=r"(__tmp)); \
+		__tmp;                                                \
+	})
+
+#define WRITE_CSR(reg, value)                                   \
+	do                                                          \
+	{                                                           \
+		uint32_t __tmp = (value);                               \
+		__asm__ __volatile__("csrw " #reg ", %0" ::"r"(__tmp)); \
+	} while (0)
+
+// Multiline Macro using '\'
+#define PANIC(fmt, ...)                                                      \
+	do                                                                       \
+	{                                                                        \
+		printf("PANIC %s:%d: " fmt "\n", __FILE__, __LINE__, ##__VA_ARGS__); \
+		while (1)                                                            \
+		{                                                                    \
+		}                                                                    \
+	} while (0)
+
+struct sbiret
+{
+	long error;
+	long value;
+};
+
+struct process
+{
+	int pid;
+	int state;
+	vaddr_t sp;
+	uint8_t stack[8192];
+};
+
 struct trap_frame
 {
 	uint32_t ra;
@@ -36,32 +79,4 @@ struct trap_frame
 	uint32_t sp;
 } __attribute__((packed));
 
-#define READ_CSR(reg)                                         \
-	({                                                        \
-		unsigned long __tmp;                                  \
-		__asm__ __volatile__("csrr %0, " #reg : "=r"(__tmp)); \
-		__tmp;                                                \
-	})
-
-#define WRITE_CSR(reg, value)                                   \
-	do                                                          \
-	{                                                           \
-		uint32_t __tmp = (value);                               \
-		__asm__ __volatile__("csrw " #reg ", %0" ::"r"(__tmp)); \
-	} while (0)
-
-// Multiline Macro using '\'
-#define PANIC(fmt, ...)                                                      \
-	do                                                                       \
-	{                                                                        \
-		printf("PANIC %s:%d: " fmt "\n", __FILE__, __LINE__, ##__VA_ARGS__); \
-		while (1)                                                            \
-		{                                                                    \
-		}                                                                    \
-	} while (0)
-
-struct sbiret
-{
-	long error;
-	long value;
-};
+void switch_context(uint32_t *prev_sp, uint32_t *next_sp);
