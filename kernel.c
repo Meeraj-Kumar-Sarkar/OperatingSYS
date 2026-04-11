@@ -4,6 +4,8 @@
 extern char __bss[], __bss_end[], __stack_top[];
 extern char __free_ram[], __free_ram_end[];
 extern char __kernel_base[];
+// Symbols to use the embedded raw binary in shell.bin.o
+extern char _binary_shell_bin_start[], _binary_shell_bin_size[];
 
 struct sbiret sbi_call(long arg0, long arg1, long arg2, long arg3, long arg4, long arg5, long fid, long eid)
 {
@@ -33,7 +35,19 @@ struct process *idle_proc;
 paddr_t alloc_pages(uint32_t n);
 void map_page(uint32_t *table1, uint32_t vaddr, paddr_t paddr, uint32_t flags);
 
-struct process *create_process(uint32_t pc)
+__attribute__((naked)) void user_entry(void)
+{
+	__asm__ __volatile__(
+		"csrw sepc, %[sepc]       \n"
+		"csrw sstatus, %[sstatus] \n"
+		"sret"
+		:
+		: [sepc] "r"(USER_BASE),
+		  [sstatus] "r"(SSTATUS_SPIE));
+}
+
+// Updating the *create_process function
+struct process *create_process(const void *image, size_t image_size)
 {
 	struct process *proc = NULL;
 	int i;
@@ -50,19 +64,19 @@ struct process *create_process(uint32_t pc)
 		PANIC("no free process slots");
 
 	uint32_t *sp = (uint32_t *)&proc->stack[sizeof(proc->stack)];
-	*--sp = 0;			  // s11
-	*--sp = 0;			  // s10
-	*--sp = 0;			  // s9
-	*--sp = 0;			  // s8
-	*--sp = 0;			  // s7
-	*--sp = 0;			  // s6
-	*--sp = 0;			  // s5
-	*--sp = 0;			  // s4
-	*--sp = 0;			  // s3
-	*--sp = 0;			  // s2
-	*--sp = 0;			  // s1
-	*--sp = 0;			  // s0
-	*--sp = (uint32_t)pc; // ra
+	*--sp = 0;					  // s11
+	*--sp = 0;					  // s10
+	*--sp = 0;					  // s9
+	*--sp = 0;					  // s8
+	*--sp = 0;					  // s7
+	*--sp = 0;					  // s6
+	*--sp = 0;					  // s5
+	*--sp = 0;					  // s4
+	*--sp = 0;					  // s3
+	*--sp = 0;					  // s2
+	*--sp = 0;					  // s1
+	*--sp = 0;					  // s0
+	*--sp = (uint32_t)user_entry; // ra (changed!)
 
 	// Map kernel pages
 	uint32_t *page_table = (uint32_t *)alloc_pages(1);
@@ -70,6 +84,20 @@ struct process *create_process(uint32_t pc)
 		 paddr < (paddr_t)__free_ram_end; paddr += PAGE_SIZE)
 		map_page(page_table, paddr, paddr, PAGE_R | PAGE_W | PAGE_X);
 
+	// Map user pages.
+	for (uint32_t off = 0; off < image_size; off += PAGE_SIZE)
+	{
+		paddr_t page = alloc_pages(1);
+
+		// Handle the case where the data to be copied is smaller than the page size.
+		size_t remaining = image_size - off;
+		size_t copy_size = PAGE_SIZE <= remaining ? PAGE_SIZE : remaining;
+
+		// Fill and map the page.
+		memcpy((void *)page, image + off, copy_size);
+		map_page(page_table, USER_BASE + off, page,
+				 PAGE_U | PAGE_R | PAGE_W | PAGE_X);
+	}
 	// Initialize fields.
 	proc->pid = i + 1;
 	proc->state = PROC_RUNNABLE;
@@ -327,12 +355,12 @@ void kernel_main(void)
 	printf("\n\n");
 	WRITE_CSR(stvec, (uint32_t)kernel_entry);
 
-	idle_proc = create_process((uint32_t)NULL);
-	idle_proc->pid = 0;
+	idle_proc = create_process(NULL, 0); // Updated
+	idle_proc->pid = 0;					 // idle
 	current_proc = idle_proc;
 
-	proc_a = create_process((uint32_t)proc_a_entry);
-	proc_b = create_process((uint32_t)proc_b_entry);
+	// new!
+	create_process(_binary_shell_bin_start, (size_t)_binary_shell_bin_size);
 
 	yield();
 	PANIC("switched to idle process");
