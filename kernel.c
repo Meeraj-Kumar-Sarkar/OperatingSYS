@@ -156,14 +156,34 @@ void putchar(char ch)
 	sbi_call(ch, 0, 0, 0, 0, 0, 0, 1 /* Console Putchar*/);
 }
 
+void handle_syscall(struct trap_frame *f)
+{
+	switch (f->a3)
+	{
+	case SYS_PUTCHAR:
+		putchar(f->a0);
+		break;
+	default:
+		PANIC("unexpected syscall a3=&x\n", f->a3);
+	}
+}
+
 void handle_trap(struct trap_frame *f)
 {
-	(void)f;
+	// (void)f;
 	uint32_t scause = READ_CSR(scause);
 	uint32_t stval = READ_CSR(stval);
 	uint32_t user_pc = READ_CSR(sepc);
-
-	PANIC("unexcepted trap scause=%x, stval=%x, sepc=%x\n", scause, stval, user_pc);
+	if (scause == SCAUSE_ECALL)
+	{
+		handle_syscall(f);
+		user_pc += 4;
+		WRITE_CSR(sepc, user_pc);
+	}
+	else
+	{
+		PANIC("unexcepted trap scause=%x, stval=%x, sepc=%x\n", scause, stval, user_pc);
+	}
 }
 
 __attribute__((naked)) void switch_context(uint32_t *prev_sp,
